@@ -39,7 +39,7 @@ La migration `sql/001_wake_core.sql` cree:
 
 La migration `sql/002_align_user_foreign_keys.sql` aligne les references utilisateur avec `users.id` et ajoute les cles etrangeres.
 La migration `sql/003_wake_device_components.sql` ajoute `wake_device_components` pour rattacher processeur, carte mere, RAM, cartes d'extension et autres informations materiel a chaque machine.
-La migration `../core/sql/001_core_project_access.sql` cree les roles centralises `wake.wake` et `wake.manage`, puis importe les entrees existantes de `wake_user_permissions`.
+La migration `Module-ShinedeCore-PHP/sql/001_core_project_access.sql` cree les roles centralises `wake.wake` et `wake.manage`, puis importe les entrees existantes de `wake_user_permissions`.
 
 Les comptes super-admin globaux disposent d'un acces complet implicite.
 Pour les autres comptes, les droits sont portes par `core_user_project_roles`.
@@ -69,9 +69,9 @@ ON DUPLICATE KEY UPDATE
 
 Ordre de lecture des variables:
 
-1. `API/wake/.env`
-2. `API/auth/.env`
-3. `API/wake/.env.example`
+1. `.env` en source, deploye sous `API/wake/.env`
+2. `Module-Auth-API/.env` en source, deploye sous `API/auth/.env`
+3. `.env.example`
 
 Variables principales:
 
@@ -96,7 +96,7 @@ Chaque tentative de reveil ecrit un `request_id` et un evenement detaille:
 
 Par defaut, l'API tente aussi d'ecrire un fichier local:
 
-- `API/wake/logs/wake.log`
+- `logs/wake.log` en source ou `API/wake/logs/wake.log` en prod
 
 Si le dossier n'est pas writable par PHP, les traces restent visibles dans le `error_log` PHP/FPM.
 
@@ -118,5 +118,5 @@ Chaque composant contient:
 ## Verification locale
 
 ```bash
-Get-ChildItem API/wake -Recurse -Filter *.php | % { php -l $_.FullName }
+Get-ChildItem P:\DEV\GitHub\App-ShinedeWake-API -Recurse -Filter *.php | % { php -l $_.FullName }
 ```
