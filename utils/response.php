@@ -13,14 +13,13 @@ function json_response(int $status, array $payload): void
 
 function json_success(?string $message = null, array $data = [], int $status = 200): void
 {
-    $payload = ['success' => true];
+    $payload = [
+        'success' => true,
+        'data' => $data,
+    ];
 
     if ($message !== null && $message !== '') {
         $payload['message'] = $message;
-    }
-
-    if ($data !== []) {
-        $payload['data'] = $data;
     }
 
     json_response($status, $payload);

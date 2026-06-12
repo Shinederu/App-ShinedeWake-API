@@ -9,6 +9,7 @@ class AuthService
     private PDO $db;
     private ProjectAccessService $accessService;
     private ?bool $hasUsersIsAdminColumn = null;
+    private ?bool $hasUsersIsBannedColumn = null;
 
     public function __construct()
     {
@@ -124,7 +125,8 @@ class AuthService
     private function findUserBySessionId(string $sessionId): ?array
     {
         $selectIsAdmin = $this->hasUsersIsAdminColumn() ? 'u.is_admin' : 'NULL AS is_admin';
-        $sql = 'SELECT u.id, u.username, u.email, u.role, ' . $selectIsAdmin . '
+        $selectIsBanned = $this->hasUsersIsBannedColumn() ? 'u.is_banned' : '0 AS is_banned';
+        $sql = 'SELECT u.id, u.username, u.email, u.role, ' . $selectIsAdmin . ', ' . $selectIsBanned . '
                 FROM auth_sessions s
                 INNER JOIN users u ON u.id = s.user_id
                 WHERE s.id = :session_id
@@ -135,7 +137,18 @@ class AuthService
         $statement->execute(['session_id' => $sessionId]);
         $row = $statement->fetch();
 
-        return is_array($row) ? $row : null;
+        if (!is_array($row)) {
+            return null;
+        }
+
+        if (to_bool($row['is_banned'] ?? false)) {
+            $delete = $this->db->prepare('DELETE FROM auth_sessions WHERE id = :session_id');
+            $delete->execute(['session_id' => $sessionId]);
+
+            return null;
+        }
+
+        return $row;
     }
 
     private function fetchWakeUsers(): array
@@ -227,5 +240,25 @@ class AuthService
         $this->hasUsersIsAdminColumn = (bool)$statement->fetch();
 
         return $this->hasUsersIsAdminColumn;
+    }
+
+    private function hasUsersIsBannedColumn(): bool
+    {
+        if ($this->hasUsersIsBannedColumn !== null) {
+            return $this->hasUsersIsBannedColumn;
+        }
+
+        $statement = $this->db->query(
+            "SELECT 1
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'users'
+               AND COLUMN_NAME = 'is_banned'
+             LIMIT 1"
+        );
+
+        $this->hasUsersIsBannedColumn = (bool)$statement->fetch();
+
+        return $this->hasUsersIsBannedColumn;
     }
 }

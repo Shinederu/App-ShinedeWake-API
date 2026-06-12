@@ -4,10 +4,18 @@ declare(strict_types=1);
 require_once __DIR__ . '/../middlewares/AuthMiddleware.php';
 require_once __DIR__ . '/../services/AuthService.php';
 require_once __DIR__ . '/../services/DeviceService.php';
+require_once __DIR__ . '/../services/MercureService.php';
 require_once __DIR__ . '/../services/WakeService.php';
 
 class DeviceController
 {
+    private MercureService $mercure;
+
+    public function __construct()
+    {
+        $this->mercure = new MercureService();
+    }
+
     public function status(): void
     {
         json_success(null, [
@@ -91,6 +99,9 @@ class DeviceController
         wake_log('wake_attempt_started', $logContext + [
             'mac_address_input' => $device['mac_address'],
         ]);
+        $this->publishWakeDeviceEvent('wake.device.wake_requested', $device, $auth, [
+            'status' => 'requested',
+        ]);
 
         try {
             $sendResult = $wakeService->sendMagicPacket(
@@ -103,6 +114,10 @@ class DeviceController
             wake_log_exception('wake_attempt_failed', $exception, $logContext + [
                 'mac_address_input' => $device['mac_address'],
             ]);
+            $this->publishWakeDeviceEvent('wake.device.wake_failed', $device, $auth, [
+                'status' => 'failed',
+                'error' => $exception->getMessage(),
+            ]);
 
             json_error('Le Magic Packet n\'a pas pu etre envoye.', 500, [
                 'trace_id' => wake_request_id(),
@@ -112,6 +127,10 @@ class DeviceController
         wake_log('wake_packet_sent', $logContext + $sendResult);
         $deviceService->touchLastWakeAt($deviceId);
         wake_log('wake_attempt_succeeded', $logContext + $sendResult);
+        $this->publishWakeDeviceEvent('wake.device.wake_succeeded', $device, $auth, [
+            'status' => 'succeeded',
+            'result' => $sendResult,
+        ]);
 
         json_success('Magic packet envoye.', [
             'device' => $deviceService->getDeviceById($deviceId),
@@ -192,5 +211,78 @@ class DeviceController
         }
 
         json_success('Machine supprimee.');
+    }
+
+    private function publishWakeDeviceEvent(string $type, array $device, array $auth, array $data = []): void
+    {
+        if (!$this->mercure->canPublish()) {
+            return;
+        }
+
+        $deviceId = (int)($device['id'] ?? 0);
+        if ($deviceId <= 0) {
+            return;
+        }
+
+        $traceId = wake_request_id();
+        $messageId = $type . ':' . $deviceId . ':' . $traceId;
+        $payload = [
+            'schema_version' => 1,
+            'message_id' => $messageId,
+            'type' => $type,
+            'source' => 'wake',
+            'target' => 'broadcast',
+            'occurred_at' => gmdate('c'),
+            'actor' => [
+                'user_id' => isset($auth['user']['id']) ? (int)$auth['user']['id'] : null,
+            ],
+            'action' => [
+                'name' => 'wake.device.wake',
+                'description' => 'Wake a registered device',
+                'params' => [
+                    'device_id' => $deviceId,
+                ],
+            ],
+            'resource' => [
+                'type' => 'device',
+                'id' => $deviceId,
+            ],
+            'data' => [
+                'device' => [
+                    'id' => $deviceId,
+                    'name' => (string)($device['name'] ?? ''),
+                    'target_ip' => (string)($device['target_ip'] ?? ''),
+                    'broadcast_address' => (string)(($device['broadcast_address'] ?? '') !== ''
+                        ? $device['broadcast_address']
+                        : WAKE_DEFAULT_BROADCAST),
+                    'port' => (int)($device['port'] ?? WAKE_DEFAULT_PORT),
+                ],
+            ] + $data,
+            'trace_id' => $traceId,
+        ];
+
+        try {
+            $published = $this->mercure->publish(
+                [
+                    $this->mercure->getDevicesTopic(),
+                    $this->mercure->getDeviceTopic($deviceId),
+                ],
+                $payload,
+                $type,
+                $messageId
+            );
+
+            if (!$published) {
+                wake_log('wake_mercure_publish_failed', [
+                    'event_type' => $type,
+                    'device_id' => $deviceId,
+                ]);
+            }
+        } catch (Throwable $exception) {
+            wake_log_exception('wake_mercure_publish_failed', $exception, [
+                'event_type' => $type,
+                'device_id' => $deviceId,
+            ]);
+        }
     }
 }

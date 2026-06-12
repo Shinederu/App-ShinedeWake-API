@@ -57,6 +57,18 @@ function env(string $key, ?string $default = null): string
     return (string)$value;
 }
 
+function env_any(array $keys, ?string $default = null): string
+{
+    foreach ($keys as $key) {
+        $value = env((string)$key, '');
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    return $default ?? '';
+}
+
 $projectRoot = realpath(__DIR__ . '/..') ?: dirname(__DIR__);
 $workspaceRoot = realpath(__DIR__ . '/../../../') ?: dirname(__DIR__, 3);
 
@@ -75,18 +87,24 @@ define('WAKE_LOG_FILE', env('WAKE_LOG_FILE', $projectRoot . '/logs/wake.log'));
 define('WAKE_PING_ENABLED', to_bool(env('WAKE_PING_ENABLED', '1')));
 define('WAKE_PING_TIMEOUT_SECONDS', max(1, (int)env('WAKE_PING_TIMEOUT_SECONDS', '1')));
 define('WAKE_PING_COMMAND', env('WAKE_PING_COMMAND', 'ping'));
+define('WAKE_MERCURE_HUB_URL', env_any(['WAKE_MERCURE_HUB_URL', 'MERCURE_HUB_URL'], 'https://mercure.shinederu.ch/.well-known/mercure'));
+define('WAKE_MERCURE_PUBLISH_URL', env_any(['WAKE_MERCURE_PUBLISH_URL', 'MERCURE_PUBLISH_URL'], WAKE_MERCURE_HUB_URL));
+define('WAKE_MERCURE_PUBLISHER_JWT_KEY', env_any(['WAKE_MERCURE_PUBLISHER_JWT_KEY', 'MERCURE_PUBLISHER_JWT_KEY'], ''));
+define('WAKE_MERCURE_TOPIC_BASE', rtrim(env('WAKE_MERCURE_TOPIC_BASE', 'https://api.shinederu.ch/wake/topics'), '/'));
+define('WAKE_MERCURE_EVENTS_PRIVATE', to_bool(env('WAKE_MERCURE_EVENTS_PRIVATE', '1')));
+define('WAKE_MERCURE_PUBLISH_TIMEOUT_SECONDS', max(1, (int)env('WAKE_MERCURE_PUBLISH_TIMEOUT_SECONDS', '3')));
 
-define('DB_TYPE', env('MQ_DB_TYPE', env('DB_TYPE', 'mysql')));
-define('DB_HOST', env('MQ_DB_HOST', env('DB_HOST', '127.0.0.1')));
-define('DB_PORT', env('MQ_DB_PORT', env('DB_PORT', '3306')));
-define('DB_NAME', env('MQ_DB_NAME', env('DB_NAME', 'ShinedeCore')));
-define('DB_USER', env('MQ_DB_USER', env('DB_USER', 'root')));
-define('DB_PASS', env('MQ_DB_PASS', env('DB_PASS', '')));
+define('DB_TYPE', env_any(['WAKE_DB_TYPE', 'DB_TYPE'], 'mysql'));
+define('DB_HOST', env_any(['WAKE_DB_HOST', 'DB_HOST'], '127.0.0.1'));
+define('DB_PORT', env_any(['WAKE_DB_PORT', 'DB_PORT'], '3306'));
+define('DB_NAME', env_any(['WAKE_DB_NAME', 'DB_NAME'], 'ShinedeCore'));
+define('DB_USER', env_any(['WAKE_DB_USER', 'DB_USER'], 'root'));
+define('DB_PASS', env_any(['WAKE_DB_PASS', 'DB_PASS'], ''));
 
 function apply_cors(): void
 {
     $origin = trim((string)($_SERVER['HTTP_ORIGIN'] ?? ''));
-    $allowedOrigins = array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'))));
+    $allowedOrigins = array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'https://wake.shinederu.ch,http://localhost:5173,http://127.0.0.1:5173'))));
 
     if ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
         header('Access-Control-Allow-Origin: ' . $origin);
